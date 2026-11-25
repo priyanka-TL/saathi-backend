@@ -55,3 +55,7 @@ nav:
             - Developer Guide: integrations/vector_db/qdrant/developer_guide.md
             - System Architecture: integrations/vector_db/qdrant/system_architecture.md
             - Testing Guide: integrations/vector_db/qdrant/testing_guide.md
+
+markdown_extensions:
+  - md_in_html
+  - pymdownx.superfences

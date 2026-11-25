@@ -1,4 +1,8 @@
 from chatbot.models import ChatStatus, CompanyChat, CompanyBotTypeChoices, LLMProvider, Voice, VoiceType
+from chatbot.constants.constants import (
+    EXTRA_CONTENT_KEY, FINISH_REASON_STOP, INITIATED_BY_AI, MIP_FILE_DOCX, MIP_FILE_PDF, MIP_IDS_KEY,
+    MIP_INDICATOR_KEY, MIP_INDICATOR_SESSION_KEY, MIP_INDICATOR_SHOW_KEY, MIP_READY_MESSAGE, QUICK_REPLY_CHIPS_KEY,
+)
 from chatbot.models.company_models import CompanyStateMachine
 from chatbot.services.response_handlers.base_response_handler import BaseResponseHandler, channel_layer
 from asgiref.sync import async_to_sync
@@ -949,6 +953,80 @@ class CommonResponseHandler(BaseResponseHandler):
 
         return translated
 
+    def _save_mip_if_complete(self, *, arguments, chat_session, company_bot, profile_id, flow_name,
+                              session_id, language, pdf_url, docx_url):
+        """
+        Save the MIP for a complete plan download (BE-03a) and work out the
+        start-date question. Returns None when no MIP was created (knowledge
+        download, partial plan, a file missing, or the chat's MIP limit reached),
+        else a MipFollowup(mip, question=(message, chips) or None, extra={...}).
+        """
+        from chatbot.models.company_models import Flow
+        from chatbot.services.mip.creation import (
+            MipFollowup, build_mip_content, create_mip_from_download, get_start_date_question, is_mip_download,
+        )
+
+        if not is_mip_download(arguments):
+            return None
+        if not pdf_url or not docx_url:
+            logger.info('[mip] MIP download without both files (pdf=%s, docx=%s); MIP not saved',
+                        bool(pdf_url), bool(docx_url))
+            return None
+        content, reason = build_mip_content(arguments)
+        if content is None:
+            logger.info('[mip] plan not complete (%s); MIP not saved', reason)
+            return None
+
+        mip = create_mip_from_download(
+            chat_session=chat_session, profile_id=profile_id, company_bot=company_bot,
+            content=content, files={MIP_FILE_PDF: pdf_url, MIP_FILE_DOCX: docx_url}, language=language,
+        )
+        if mip is None:
+            return None
+
+        flow = Flow.objects.filter(flow_route=flow_name).first() if flow_name else None
+        question = get_start_date_question(flow, mip.title)
+        if question is None:
+            logger.error('[mip] no active ASK_START_DATE rule for flow %r; MIP %s created without the '
+                         'start-date question (run the sync_saathi_bot script)', flow_name, mip.pk)
+        return MipFollowup(
+            mip=mip,
+            question=question,
+            extra={
+                MIP_IDS_KEY: [mip.pk],
+                MIP_INDICATOR_KEY: {MIP_INDICATOR_SESSION_KEY: session_id, MIP_INDICATOR_SHOW_KEY: True},
+            },
+        )
+
+    def _send_mip_start_date_question(self, mip_followup, *, chat_session, company_bot, session_id,
+                                      channel_name, language, profile_id):
+        """Send and save the start-date question as its own bot message, after the download message."""
+        message, chips = mip_followup.question
+        extra_content = {QUICK_REPLY_CHIPS_KEY: list(chips), **mip_followup.extra}
+        try:
+            translated_message = translate_and_send_message(
+                accumulated_message=message,
+                current_channel_name=channel_name,
+                current_step_number=chat_session.current_step,
+                finish_reason=FINISH_REASON_STOP,
+                route=language,
+                company_bot=company_bot,
+                extra_content=extra_content,
+            )
+            save_in_company_db(
+                session_id=session_id,
+                profile_id=profile_id,
+                initiated_by=INITIATED_BY_AI,
+                message=message,
+                chunks=None,
+                status=ChatStatus.IN_PROGRESS,
+                translated_message=translated_message,
+                stage=None,
+                other_params={EXTRA_CONTENT_KEY: extra_content},
+            )
+        except Exception:
+            logger.exception('[mip] sending the start-date question for MIP %s failed', mip_followup.mip.pk)
+
     def _handle_freeflow_function_call(self, response, chat_session, chunks, **kwargs):
         """Handle function calls for FREE_FLOW bots (like download_file)"""
         
@@ -998,6 +1076,10 @@ class CommonResponseHandler(BaseResponseHandler):
             finalized_sources = (chat_session.other_params or {}).get('finalized_sources') or []
 
             logger.info(f'[download_file] flow_name={flow_name!r} filename={filename!r} sources={len(finalized_sources)}')
+
+            # Keep the LLM's English arguments: the MIP record is saved from these
+            # (the translated copy below only renders the user's PDF/DOCX).
+            original_arguments = dict(arguments) if isinstance(arguments, dict) else {}
 
             # Translate LLM-generated content fields to the user's language
             arguments = self._translate_download_arguments(arguments, language, company_bot)
@@ -1066,6 +1148,18 @@ class CommonResponseHandler(BaseResponseHandler):
 
             logger.info(f'[download_file] pdf_url={pdf_url} docx_url={docx_url}')
 
+            # Save the MIP now that both files exist (BE-03a). A failure here must
+            # never stop the user getting their files.
+            mip_followup = None
+            try:
+                mip_followup = self._save_mip_if_complete(
+                    arguments=original_arguments, chat_session=chat_session, company_bot=company_bot,
+                    profile_id=profile_id, flow_name=flow_name, session_id=session_id,
+                    language=language, pdf_url=pdf_url, docx_url=docx_url,
+                )
+            except Exception:
+                logger.exception('[download_file] saving the MIP failed; sending the download as usual')
+
             _raw_filename = pdf_result.get('file_name') or docx_result.get('file_name')
             display_filename = translated_filename if _raw_filename else None
 
@@ -1083,6 +1177,14 @@ class CommonResponseHandler(BaseResponseHandler):
             else:
                 bot_message = arguments.get('bot_message', f"Your file '{filename}' is ready to download.")
                 extra_content_to_send = {'download': download}
+                if mip_followup:
+                    if mip_followup.question:
+                        # The start-date question follows as its own message, so the
+                        # download message is only the fixed confirmation.
+                        bot_message = MIP_READY_MESSAGE
+                    else:
+                        # No ASK_START_DATE rule: still switch the chat's red dot on.
+                        extra_content_to_send.update(mip_followup.extra)
 
             preamble_already_sent = (kwargs.get('llm_extra_content') or {}).get('_text_streamed_to_ws', False)
             if preamble_already_sent:
@@ -1112,6 +1214,12 @@ class CommonResponseHandler(BaseResponseHandler):
                 stage=None,
                 other_params={'extra_content': extra_content_to_send} if extra_content_to_send else None,
             )
+
+            if mip_followup and mip_followup.question:
+                self._send_mip_start_date_question(
+                    mip_followup, chat_session=chat_session, company_bot=company_bot, session_id=session_id,
+                    channel_name=channel_name, language=language, profile_id=profile_id,
+                )
 
             return bot_message
         else:
