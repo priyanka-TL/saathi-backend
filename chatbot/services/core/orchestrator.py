@@ -3,6 +3,8 @@ from .base_service import BaseChatService
 from .prompt_builder import PromptBuilder
 from .message_handler import MessageHandler
 from chatbot.celery_tasks.handle_message import translate_and_send_message
+from chatbot.constants.constants import FINISH_REASON_STOP
+from chatbot.constants.messages import CHAT_MSG_SESSION_FORBIDDEN
 
 logger = logging.getLogger('django')
 
@@ -23,6 +25,13 @@ class ChatOrchestrator:
             session_data = self.base_service.get_session_data(
                 session_id=session_id, profile_id=profile_id, bot_route=self.bot_strategy.get_route()
             )
+            if session_data.get('forbidden'):
+                # Another user's chat: answer with a generic message and nothing from that chat.
+                return translate_and_send_message(
+                    accumulated_message=CHAT_MSG_SESSION_FORBIDDEN, current_channel_name=channel_name,
+                    current_step_number=None, finish_reason=FINISH_REASON_STOP, route=language,
+                    company_bot=session_data['company_bot']
+                )
 
             # Get bot vernacular and intro
             bot_vernacular, intro_mssg = self.base_service.get_bot_vernacular_and_intro(

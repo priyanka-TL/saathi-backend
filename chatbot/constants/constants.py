@@ -17,6 +17,14 @@ import re
 # ── logging ──────────────────────────────────────────────────────────────────
 LOGGER_NAME = 'django'
 
+# ── chat session ownership ───────────────────────────────────────────────────
+# A chat (ChatSession) may only be used by the profile that owns it; see
+# chatbot/services/session_ownership.py. The WebSocket answers a foreign session ID
+# with this system event (message text: chatbot/constants/messages.py) and closes the socket.
+WS_EVENT_SESSION_FORBIDDEN = 'session_forbidden'
+# ChatSession fields that decide whose chat it is; set at creation, never changed by a REST update.
+CHAT_SESSION_OWNER_FIELDS = ('session', 'profile', 'user_id', 'company_bot')
+
 # ── chat messages ────────────────────────────────────────────────────────────
 INITIATED_BY_AI = 'AI'               # save_in_company_db(initiated_by=...) for a bot message
 FINISH_REASON_STOP = 'stop'          # finish_reason of a complete bot message

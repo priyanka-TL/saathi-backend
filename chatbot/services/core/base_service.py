@@ -1,4 +1,5 @@
 from chatbot.models import CompanyChat, Profile, CompanyBot, ChatSession, BotVernacular
+from chatbot.services.session_ownership import is_session_owner
 import logging
 
 logger = logging.getLogger('django')
@@ -9,8 +10,10 @@ class BaseChatService:
 
     @staticmethod
     def get_session_data(session_id, profile_id, bot_route):
-        """Retrieve common session data"""
-        company_chats = CompanyChat.objects.filter(session=session_id).order_by('created_at')
+        """
+        Retrieve common session data. When the chat belongs to another profile, returns
+        forbidden=True with no chat and no chat history.
+        """
         chat_session = ChatSession.objects.filter(session=session_id).first()
         profile = Profile.objects.filter(id=profile_id).first()
 
@@ -19,8 +22,20 @@ class BaseChatService:
         else:
             company_bot = CompanyBot.objects.get(route=bot_route)
 
+        if chat_session and not is_session_owner(chat_session, profile):
+            logger.warning('[get_session_data] profile %s does not own chat %s (owner profile %s); refused',
+                           profile_id, session_id, chat_session.profile_id)
+            return {
+                'forbidden': True,
+                'company_chats': CompanyChat.objects.none(),
+                'chat_session': None,
+                'profile': profile,
+                'company_bot': company_bot
+            }
+
         return {
-            'company_chats': company_chats,
+            'forbidden': False,
+            'company_chats': CompanyChat.objects.filter(session=session_id).order_by('created_at'),
             'chat_session': chat_session,
             'profile': profile,
             'company_bot': company_bot

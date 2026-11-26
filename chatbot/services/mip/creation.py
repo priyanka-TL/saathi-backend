@@ -7,7 +7,8 @@ the download_file tool's PDF and DOCX are rendered, i.e. when Saathi sends
 then clicks a download button.
 
 A MIP is created only when the plan is complete (goal, objective, duration,
-action steps and success indicators), both files exist, and the chat is below
+action steps and success indicators), both files exist, the chat belongs to the
+profile (services/session_ownership.py), and the chat is below
 its MIP limit (CompanyBot.other_params.mip.max_per_chat; when the bot sets none,
 settings.MIP_DEFAULT_MAX_PER_CHAT from env MIP_DEFAULT_MAX_PER_CHAT, 1 when unset). The plan
 is stored in English, from the LLM's original tool arguments, the same
@@ -31,8 +32,9 @@ from chatbot.constants.constants import (
     MIP_RULE_PLACEHOLDER_START_DATE, MIP_RULE_PLACEHOLDER_TITLE, MIP_STEP_ACTION, MIP_STEP_STATUS,
     MIP_STEP_STATUS_PENDING, MIP_STEP_WEEK,
 )
-from chatbot.models import ChatSession, Mip, MipCheckInRule, MipDetails
+from chatbot.models import ChatSession, Mip, MipCheckInRule, MipDetails, Profile
 from chatbot.models.enums import MipStatus
+from chatbot.services.session_ownership import is_session_owner
 
 logger = logging.getLogger(LOGGER_NAME)
 
@@ -185,8 +187,18 @@ def create_mip_from_download(*, chat_session, profile_id, company_bot, content, 
 
     max_per_chat = get_max_per_chat(company_bot)
     with transaction.atomic():
-        # Lock the chat row so two downloads at once can't both pass the limit check.
-        ChatSession.objects.select_for_update().only('id').get(pk=chat_session.pk)
+        # Lock the chat row so two downloads at once can't both pass the limit check. The owner
+        # is checked on this locked row, not on the copy loaded earlier in the turn, so a chat
+        # that changed hands meanwhile gets no MIP and keeps its quota.
+        locked = ChatSession.objects.select_for_update().only('id', 'profile', 'user_id').get(pk=chat_session.pk)
+        profile = Profile.objects.only('id', 'userid').filter(pk=profile_id).first()
+        if not is_session_owner(locked, profile):
+            logger.warning('[mip] profile %s does not own chat %s (owner profile %s); MIP not saved',
+                           profile_id, chat_session.session, locked.profile_id)
+            return None
+        if not locked.user_id:
+            logger.warning('[mip] chat %s has no user_id; MIP not saved', chat_session.session)
+            return None
         existing = Mip.objects.filter(chat_session_id=chat_session.pk).count()
         if existing >= max_per_chat:
             logger.info('[mip] chat %s already has %s MIP(s) (max_per_chat=%s); not creating another',
@@ -195,7 +207,7 @@ def create_mip_from_download(*, chat_session, profile_id, company_bot, content, 
 
         mip = Mip(
             profile_id=profile_id,
-            user_id=chat_session.user_id,
+            user_id=locked.user_id,
             chat_session=chat_session,
             title=content['title'],
             status=MipStatus.GENERATED,

@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from chatbot.constants.constants import CHAT_SESSION_OWNER_FIELDS
 from chatbot.models import ChatSession
 from chatbot.models.profile_models import Profile
 from chatbot.models.company_models import Voice, CompanyChat
@@ -44,3 +45,10 @@ class ChatSessionSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Profile does not exist.")
             validated_data['profile'] = profile
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        # Moving a chat to another profile or user would get around the owner check
+        # (chatbot/services/session_ownership.py), so those fields are ignored here.
+        for field in CHAT_SESSION_OWNER_FIELDS:
+            validated_data.pop(field, None)
+        return super().update(instance, validated_data)

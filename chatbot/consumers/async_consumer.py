@@ -4,7 +4,10 @@ import os
 from django.conf import settings
 from django.db import transaction
 from chatbot.celery_tasks.common_chat_tasks import save_in_company_db
+from chatbot.constants.constants import WS_EVENT_SESSION_FORBIDDEN
+from chatbot.constants.messages import WS_MSG_SESSION_FORBIDDEN
 from chatbot.consumers.async_base_consumer import AsyncBaseConsumer
+from chatbot.services.session_ownership import is_session_owner
 from chatbot.models import ChatStatus, ChatSession, Profile, CompanyBot, Voice, VoiceType, CompanyChat, \
     TextConversionType, CompanyBotTypeChoices
 from chatbot.celery_tasks.flow_tasks import get_flow_response
@@ -61,8 +64,14 @@ class AsyncSocketConsumer(AsyncBaseConsumer):
             message_type = text_data_json.get('type', None)
             company_chat_status = None
             if message_type == 'authenticate':
-                self.session_id = text_data_json.get('sessionid')
-                self.profile_id = text_data_json.get('profileid')
+                # The chat and profile are only taken on once Elevate accepted the token and the
+                # chat is known to belong to that profile. Until then the socket stays
+                # unauthenticated, so a failed or foreign authenticate (also a second one on an
+                # open socket) can't send messages into a chat or touch one on disconnect.
+                # The client's profileid is not used: the profile comes from Elevate.
+                self.session_id = None
+                self.profile_id = None
+                session_id = text_data_json.get('sessionid')
                 self.route = text_data_json.get('route')
                 self.bot_route = text_data_json.get('bot_route')
                 self.flow_name = text_data_json.get('flow_name')
@@ -110,15 +119,25 @@ class AsyncSocketConsumer(AsyncBaseConsumer):
                 profile = await self.get_profile(self.profile_id)
                 logger.info(
                     'channel_name: %s, session_id: %s, profile_id: %s, route: %s',
-                    self.channel_name, self.session_id, self.profile_id, self.route
+                    self.channel_name, session_id, self.profile_id, self.route
                 )
 
                 self.company_bot = await self.get_company_bot(profile, self.bot_route)
 
-                # Create chat session asynchronously
-                _, session_created = await self.create_chat_session(
-                    self.session_id, profile, self.company_bot, self.ip_address, user_id
+                # Create chat session asynchronously (None: the chat belongs to someone else)
+                chat_session, session_created = await self.create_chat_session(
+                    session_id, profile, self.company_bot, self.ip_address, user_id
                 )
+                if chat_session is None:
+                    await self.send(text_data=json.dumps({
+                        "msg": WS_MSG_SESSION_FORBIDDEN,
+                        "source": "system",
+                        "error": True,
+                        "event": WS_EVENT_SESSION_FORBIDDEN
+                    }))
+                    await self.close()
+                    return
+                self.session_id = session_id
 
                 if not session_created:
                     company_chat_status = await self.determine_company_chat_status_async(
@@ -252,6 +271,10 @@ class AsyncSocketConsumer(AsyncBaseConsumer):
 
     @database_sync_to_async
     def create_chat_session(self, session_id, profile, company_bot, ip_address, user_id):
+        """
+        Get or create the chat for `profile`. Returns (chat_session, created), or (None, False)
+        when the session ID belongs to another user's chat; that chat is then not changed.
+        """
         step_number = 1
         if profile and profile.first_name and profile.first_name != '':
             try:
@@ -282,6 +305,18 @@ class AsyncSocketConsumer(AsyncBaseConsumer):
             # pending text-conversion override).
             with transaction.atomic():
                 cs = ChatSession.objects.select_for_update().get(pk=cs.pk)
+                if not is_session_owner(cs, profile):
+                    logger.warning(
+                        '[authenticate] profile %s does not own chat %s (owner profile %s); refused',
+                        getattr(profile, 'pk', None), session_id, cs.profile_id
+                    )
+                    return None, False
+                update_fields = ["language", "other_params"]
+                if cs.profile_id is None:
+                    # Legacy chat without a profile, owned through its user_id: link it to the profile.
+                    cs.profile = profile
+                    update_fields.append("profile")
+
                 if cs.language != self.route:
                     cs.language = self.route
 
@@ -290,7 +325,7 @@ class AsyncSocketConsumer(AsyncBaseConsumer):
 
                 cs.other_params = other_params
 
-                cs.save(update_fields=["language", "other_params"])
+                cs.save(update_fields=update_fields)
         else:
             cs.other_params = {"ip_address": ip_address}
             cs.save(update_fields=["other_params"])
