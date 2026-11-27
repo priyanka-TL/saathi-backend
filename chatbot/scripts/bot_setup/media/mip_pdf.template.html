@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ args.filename | default("Saathi Document") }}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: "Georgia", "Times New Roman", "Noto Serif Tamil", "Noto Serif Devanagari", "Noto Serif Kannada", "Anek Odia", "Noto Sans Oriya", serif;
+      font-size: 11pt;
+      color: #1a1a1a;
+      background: #ffffff;
+    }
+
+    @media print {
+      @page {
+        size: A4;
+        margin: 18mm 20mm 24mm 20mm;
+      }
+    }
+
+    .content {
+      font-family: "Georgia", "Times New Roman", "Noto Serif Tamil", "Noto Serif Devanagari", "Noto Serif Kannada", "Anek Odia", "Noto Sans Oriya", serif;
+      font-size: 11pt;
+      color: #1a1a1a;
+    }
+
+    .doc-title {
+      font-family: "Arial", "Noto Sans Tamil", "Noto Sans Devanagari", "Noto Sans Kannada", "Anek Odia", "Noto Sans Oriya", sans-serif;
+      font-size: 15pt;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-bottom: 24px;
+    }
+
+    .section { margin-bottom: 20px; }
+
+    .section-label {
+      font-family: "Arial", "Noto Sans Tamil", "Noto Sans Devanagari", "Noto Sans Kannada", "Anek Odia", "Noto Sans Oriya", sans-serif;
+      font-size: 11pt;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-bottom: 5px;
+    }
+
+    .section-content {
+      font-size: 11pt;
+      line-height: 1.65;
+      color: #1a1a1a;
+    }
+
+    .timeline-duration {
+      font-size: 11pt;
+      line-height: 1.65;
+      color: #1a1a1a;
+    }
+
+    .action-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 4px;
+      font-size: 11pt;
+    }
+
+    .action-table th {
+      font-family: "Arial", "Noto Sans Tamil", "Noto Sans Devanagari", "Noto Sans Kannada", "Anek Odia", "Noto Sans Oriya", sans-serif;
+      font-weight: 700;
+      font-size: 10pt;
+      text-align: left;
+      padding: 6px 8px;
+      border: 1px solid #ccc;
+      background: #f5f5f5;
+    }
+
+    .action-table td {
+      padding: 8px;
+      border: 1px solid #ccc;
+      vertical-align: top;
+      line-height: 1.55;
+    }
+
+    .action-table td.week-col {
+      white-space: nowrap;
+      width: 80px;
+      color: #444;
+    }
+
+    .action-table td.num-col {
+      width: 28px;
+      text-align: center;
+      color: #444;
+    }
+
+    /* Prevent a row from being split across pages */
+    .action-table tr {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    /* Keep the table header repeated on each page */
+    .action-table thead {
+      display: table-header-group;
+    }
+
+    .indicator-list {
+      list-style: none;
+      margin-top: 2px;
+    }
+
+    .indicator-list li {
+      font-size: 11pt;
+      line-height: 1.6;
+      margin-bottom: 6px;
+    }
+
+    .knowledge-body {
+      font-size: 11pt;
+      line-height: 1.75;
+      white-space: pre-wrap;
+    }
+
+    .placeholder {
+      color: #bbb;
+      font-style: italic;
+      font-size: 11pt;
+    }
+  </style>
+</head>
+<body>
+
+{% if args.knowledge_content %}
+
+  <div class="content">
+    <div class="doc-title">{{ args.title }}</div>
+    <div class="section">
+      <div class="knowledge-body">{{ args.knowledge_content }}</div>
+    </div>
+  </div>
+
+{% else %}
+
+  <div class="content">
+    <div class="doc-title">{{ constants.doc_title }}</div>
+
+    <div class="section">
+      <div class="section-label">{{ constants.goal_label }}</div>
+      <div class="section-content">
+        {% if args.goal %}{{ args.goal }}{% else %}<span class="placeholder">—</span>{% endif %}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">{{ constants.objective_label }}</div>
+      <div class="section-content">
+        {% if args.objective %}{{ args.objective }}{% else %}<span class="placeholder">—</span>{% endif %}
+      </div>
+    </div>
+
+<div class="section">
+  <div class="section-label">{{ constants.timeline_label }}</div>
+
+  <div class="timeline-duration">
+    {% if args.duration %}
+      {{ args.duration }}
+    {% else %}
+      <span class="placeholder">—</span>
+    {% endif %}
+  </div>
+</div>
+
+    <div class="section">
+      <div class="section-label">{{ constants.action_plan_label }}</div>
+      {% if args.action_plan and args.action_plan | length > 0 %}
+        <table class="action-table">
+          <thead>
+            <tr><th class="num-col">#</th><th>{{ constants.action_col_label }}</th><th class="week-col">{{ constants.week_label }}</th></tr>
+          </thead>
+          <tbody>
+            {% for item in args.action_plan %}
+            <tr>
+              <td class="num-col">{{ loop.index }}</td>
+              <td>{{ item.action }}</td>
+              <td class="week-col">{{ item.week }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <span class="placeholder">—</span>
+      {% endif %}
+    </div>
+
+    {% if args.success_indicators and args.success_indicators | length > 0 %}
+    <div class="section" style="page-break-inside: avoid;">
+      <div class="section-label">{{ constants.success_indicators_label }}</div>
+      <ol class="indicator-list">
+        {% for indicator in args.success_indicators %}
+        <li>{{ loop.index }}. {{ indicator }}</li>
+        {% endfor %}
+      </ol>
+    </div>
+    {% endif %}
+
+  </div>
+
+{% endif %}
+
+</body>
+</html>

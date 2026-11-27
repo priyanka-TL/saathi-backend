@@ -356,6 +356,11 @@ else:
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
 
+
+# MIPs one chat may hold when its bot sets no valid other_params.mip.max_per_chat
+# (chatbot/services/mip/creation.py, get_max_per_chat). Default 1, also when empty; never less than 1.
+MIP_DEFAULT_MAX_PER_CHAT = max(int((os.getenv('MIP_DEFAULT_MAX_PER_CHAT') or '').strip() or 1), 1)
+
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Your Project API',
     'DESCRIPTION': 'Your project description',

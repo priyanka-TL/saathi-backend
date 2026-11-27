@@ -43,10 +43,9 @@ class AsyncBaseConsumer(AsyncWebsocketConsumer):
         if hasattr(self, '_idle_task') and self._idle_task:
             self._idle_task.cancel()
         try:
-            if hasattr(self, 'session_id') and self.session_id:
-                session_id = self.session_id
-            else:
-                session_id = self.scope.get('cookies', {}).get('sessionid')
+            # Only the chat a successful authenticate took on (owner-checked). Not a
+            # 'sessionid' cookie: a client can set that to any chat.
+            session_id = getattr(self, 'session_id', None)
 
             if session_id:
                 await self.save_chat_session(session_id)
