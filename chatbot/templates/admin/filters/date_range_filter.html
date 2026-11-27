@@ -1,0 +1,19 @@
+{% load i18n %}
+{% comment %}
+From / to date boxes for chatbot.filter.mip_filters.DateRangeFieldListFilter. Rendered inside
+Jazzmin's filter form (no form of its own), so the Search button sends both values.
+{% endcomment %}
+<div class="form-group mr-2 mb-2" style="display: inline-flex; align-items: center;">
+    <label class="mr-1 mb-0" for="id_{{ spec.lookup_kwarg_gte }}">{{ title|capfirst }}</label>
+    <input type="date" class="form-control" id="id_{{ spec.lookup_kwarg_gte }}"
+           name="{{ spec.lookup_kwarg_gte }}" value="{{ spec.value_gte }}"
+           title="{% translate 'From' %}" aria-label="{{ title|capfirst }}: {% translate 'from' %}">
+    <span class="mx-1">&ndash;</span>
+    <input type="date" class="form-control" id="id_{{ spec.lookup_kwarg_lte }}"
+           name="{{ spec.lookup_kwarg_lte }}" value="{{ spec.value_lte }}"
+           title="{% translate 'To' %}" aria-label="{{ title|capfirst }}: {% translate 'to' %}">
+    {% if spec.value_gte or spec.value_lte %}
+        <a class="ml-1" href="{{ choices.0.query_string|iriencode }}"
+           title="{% translate 'Clear' %} {{ title }}" aria-label="{% translate 'Clear' %} {{ title }}">&times;</a>
+    {% endif %}
+</div>

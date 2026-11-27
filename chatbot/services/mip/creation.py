@@ -16,6 +16,8 @@ internal language as CompanyChat.message; MipDetails.language records the
 chat language, and the rendered files are in that language.
 
 next_check_in_rule / next_check_in_on stay empty here (BE-03b fills them).
+Mip.company is the company of the chat's bot (`company_bot`), set once here; the
+admin filters and moderator scoping read it.
 """
 import logging
 from typing import NamedTuple
@@ -209,6 +211,7 @@ def create_mip_from_download(*, chat_session, profile_id, company_bot, content, 
             profile_id=profile_id,
             user_id=locked.user_id,
             chat_session=chat_session,
+            company_id=getattr(company_bot, 'company_id', None),
             title=content['title'],
             status=MipStatus.GENERATED,
         )

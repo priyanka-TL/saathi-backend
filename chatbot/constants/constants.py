@@ -84,3 +84,18 @@ MIP_RULE_ASK_START_DATE = 'ASK_START_DATE'
 MIP_RULE_PLACEHOLDER_TITLE = 'title'
 MIP_RULE_PLACEHOLDER_START_DATE = 'start_date'
 MIP_RULE_PLACEHOLDER_END_DATE = 'end_date'
+
+# ── MIP admin (chatbot/admin/mip_admin.py, chatbot/filter/mip_filters.py) ────
+MIP_ADMIN_EXPORT_FILENAME = 'mips.xlsx'
+ADMIN_DATE_RANGE_FILTER_TEMPLATE = 'admin/filters/date_range_filter.html'
+ADMIN_TEXT_INPUT_FILTER_TEMPLATE = 'admin/filters/text_input_filter.html'
+# A stored file URL is shown as a link only when it starts with one of these.
+ADMIN_SAFE_LINK_PREFIXES = ('http://', 'https://')
+# Keys inside each MipStory.captured_elements item ({"text", "source", "original_text"?}).
+MIP_STORY_ELEMENT_TEXT = 'text'
+MIP_STORY_ELEMENT_SOURCE = 'source'
+# Query parameters of the MIP list filters (ID boxes, company).
+MIP_FILTER_PARAM_MIP_ID = 'mip_id'
+MIP_FILTER_PARAM_USER_ID = 'user_id'
+MIP_FILTER_PARAM_SESSION_ID = 'session_id'
+MIP_FILTER_PARAM_COMPANY = 'company'

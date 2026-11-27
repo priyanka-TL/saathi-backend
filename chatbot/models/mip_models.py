@@ -6,7 +6,7 @@ Design: Plans/SAATHI_1.5.0_MIP_Tracking_README.md, section 4 (database design).
     chatbot_flow ──1:N── chatbot_mipcheckinrule
                                   ▲ PROTECT (mip.next_check_in_rule)
     chatbot_profile ──1:N──┐      │            ┌──1:1── chatbot_mipdetails
-                           ├─(PROTECT)─ chatbot_mip ┤
+    chatbot_company ──1:N──┼─(PROTECT)─ chatbot_mip ┤
     chatbot_chatsession ─1:N┘                   └──1:1── chatbot_mipstory
 
 All four models keep change history (simple_history), so each save also writes
@@ -151,6 +151,15 @@ class Mip(models.Model):
         related_name='mips',
         help_text="Chat where the MIP was created. Every later question is asked in this chat, "
                   "and the sidebar indicator shows on this chat.",
+    )
+    company = models.ForeignKey(
+        'chatbot.Company',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='mips',
+        help_text="Company whose bot created the MIP (the chat's bot company at creation). "
+                  "Used for admin filtering and moderator scoping. Empty only for an old MIP whose chat has no bot.",
     )
     title = models.CharField(
         max_length=255,

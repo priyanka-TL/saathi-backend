@@ -1,0 +1,14 @@
+{% load i18n %}
+{% comment %}
+Free-text box for chatbot.filter.mip_filters.TextInputFilter (MIP ID, user ID, chat session ID).
+Rendered inside Jazzmin's filter form (no form of its own), so the Search button sends the value.
+{% endcomment %}
+<div class="form-group mr-2 mb-2" style="display: inline-flex; align-items: center;">
+    <input type="text" class="form-control" id="id_filter_{{ spec.parameter_name }}"
+           name="{{ spec.parameter_name }}" value="{{ spec.typed_value }}"
+           placeholder="{{ title }}" title="{{ title }}" aria-label="{{ title }}">
+    {% if spec.typed_value %}
+        <a class="ml-1" href="{{ choices.0.query_string|iriencode }}"
+           title="{% translate 'Clear' %} {{ title }}" aria-label="{% translate 'Clear' %} {{ title }}">&times;</a>
+    {% endif %}
+</div>
