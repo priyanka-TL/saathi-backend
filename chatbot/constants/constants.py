@@ -64,6 +64,8 @@ MIP_OTHER_PARAMS_KEY = 'mip'
 MIP_MAX_PER_CHAT_KEY = 'max_per_chat'
 
 MIP_HISTORY_REASON_CREATED = 'MIP generated'            # simple_history change reason
+MIP_HISTORY_REASON_ADMIN_EDITED = 'Edited in admin'      # change reason of a superuser's admin edit
+MIP_HISTORY_REASON_ADMIN_ADDED = 'Added in admin'        # change reason of a check-in rule added in admin
 MIP_READY_MESSAGE = 'Your plan is ready to download.'   # download message of a complete MIP
 
 # Plan length (MipDetails.duration_days).
